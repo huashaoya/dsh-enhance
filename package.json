@@ -1,0 +1,51 @@
+{
+  "name": "@huashaoya/dsh-enhance",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "DSH 增强插件：把多个小扩展汇总在一个包里，一处维护、一处启停。One bundle for many small DeepSeek Harness extensions.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "plugin",
+    "ui"
+  ],
+  "homepage": "https://github.com/huashaoya/dsh-enhance#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huashaoya/dsh-enhance.git"
+  },
+  "bugs": {
+    "url": "https://github.com/huashaoya/dsh-enhance/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

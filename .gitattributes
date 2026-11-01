@@ -1,0 +1,14 @@
+# 跨平台换行：仓库统一 LF，检出时按平台自动处理
+* text=auto eol=lf
+
+# 明确文本类型
+*.js      text eol=lf
+*.json    text eol=lf
+*.yml     text eol=lf
+*.md      text eol=lf
+*.svg     text eol=lf
+
+# 二进制/打包产物不参与换行转换
+*.tgz     binary
+*.png     binary
+*.jpg     binary

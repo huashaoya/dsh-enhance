@@ -1,0 +1,10 @@
+# dsh-enhance bundle patch.
+#
+# 整个增强插件只占 Loader 里这一行。注意：这里的 name 必须与 package.json 的
+# name 完全一致，浏览器半边的模块 id 也必须是同一个字符串——三者对不上，
+# 插件会加载但拿不到自己的 client bundle。
+# 以后加功能不要加行：往 client.js 的 FEATURES 里加一条就是。
+- insert:
+    - id: dsh-enhance
+      name: '@huashaoya/dsh-enhance'
+      config: {}
