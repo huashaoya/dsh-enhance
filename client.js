@@ -246,6 +246,9 @@ window.__ModuleLoader__.load({
 					const tabIds = openTabIds(ctx, sessionId);
 					// 没有别的标签可关时这一行不出现：关掉「其他」等于什么都不做。
 					if (tabIds.length < 2 || keep === void 0) return null;
+					// 保命：命中的标签必须真的在列表里。取不到它就无从知道"哪个要留"，
+					// 此时宁可什么都不做，也绝不能退化成关掉全部。
+					if (!tabIds.includes(keep)) return null;
 					const others = tabIds.filter((tabId) => tabId !== keep);
 					if (others.length === 0) return null;
 					return h(MenuRow, {
