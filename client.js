@@ -273,11 +273,181 @@ window.__ModuleLoader__.load({
 		})();
 
 		/**
+		* 功能三：聊天框 ↑ / ↓ 回填历史提问。
+		*
+		* 输入框是外壳的 Lexical 编辑器，按键仲裁（`arbitrate`）只对外壳内部开放，
+		* 插件拿不到。所以这里用两个插件能合法拿到的东西：
+		*   - 监听 keydown 事件（捕获阶段，先于编辑器处理方向键）；
+		*   - 用槽位标准 props 里的 `inputActions.setDraft(text)` 写回草稿。
+		*
+		* 历史来自 `useChat` 的节点表：`kind === "user"` 的节点，`data.content` 里
+		* `type === "text"` 的块就是原文。只取文本块，附件/引用 chip 不参与回填。
+		*
+		* 关键约束：`useChat` / `useInput` 是选择器 hook，**只能在渲染期调用**，
+		* 事件处理里绝不能调（React 会报 hook 顺序错误，且同一 tick 内重复订阅）。
+		* 所以历史列表与草稿都先随渲染取到 ref 里，事件里只读 ref。
+		*/
+		const featurePromptHistory = (() => {
+			const NS = "enhance.promptHistory";
+			/** 记住多少条历史提问；再多也没有意义，反而让方向键显得迟钝。 */
+			const LIMIT = 50;
+
+			/**
+			* 把一个 Chat 快照投影成"旧 → 新"的纯文本提问列表。
+			* @param snapshot - Chat 视图快照；未就绪时 undefined。
+			* @returns 纯文本列表。
+			*/
+			const promptsOf = (snapshot) => {
+				if (snapshot === void 0) return [];
+				const items = [];
+				// `order` 是 Chat 节点的时间顺序键，按它遍历即按时间顺序。
+				for (const key of snapshot.order) {
+					const node = snapshot.nodes.get(key);
+					if (node === void 0 || node.kind !== "user") continue;
+					const content = node.data?.content;
+					if (!Array.isArray(content)) continue;
+					const text = content.filter((block) => block?.type === "text" && typeof block.text === "string").map((block) => block.text).join("");
+					// 纯附件消息没有文本，回填它等于回填空白，跳过。
+					if (text.trim() !== "") items.push(text);
+				}
+				return items.slice(-LIMIT);
+			};
+
+			/**
+			* @param ctx - 功能上下文（已有 slots / locale）。
+			* @returns 可挂到会话槽位的组件工厂。
+			*/
+			const createBinder = (ctx) => {
+				/** 每个会话 id 一份游标，切会话不串历史。 */
+				const cursors = new Map();
+
+				/**
+				* @param props - 槽位标准 props：sessionId / useChat / useInput / inputActions。
+				* @returns 不渲染任何东西的常驻监听组件。
+				*/
+				return function PromptHistoryBinder(props) {
+					useLocaleRevision(ctx);
+					const sessionId = props.sessionId;
+					const draft = props.useInput((state) => state.draft);
+					// 渲染期取历史：hook 只能在这里调，事件里读 ref 快照。
+					const prompts = props.useChat((snapshot) => promptsOf(snapshot));
+
+					const latest = React.useRef({ prompts, draft });
+					latest.current = { prompts, draft };
+
+					const readCursor = () => {
+						let found = cursors.get(sessionId);
+						if (found === void 0) {
+							found = { index: -1, written: null };
+							cursors.set(sessionId, found);
+						}
+						return found;
+					};
+
+					React.useEffect(() => {
+						if (sessionId === void 0) return;
+						const cursor = readCursor();
+						// 草稿被我们自己之外的东西改了（用户输入、发送成功清空、切会话回填），
+						// 就退出历史模式，把方向键还给编辑器。
+						if (cursor.index >= 0 && cursor.written !== null && draft !== cursor.written) cursor.index = -1;
+					}, [sessionId, draft]);
+
+					React.useEffect(() => {
+						if (sessionId === void 0) return;
+						const setDraft = props.inputActions.setDraft;
+						/**
+						* 把游标指向的条目写进草稿，并把光标放到末尾。
+						* @param cursor - 该会话的游标。
+						* @param editor - 输入框根节点。
+						*/
+						const apply = (cursor, editor) => {
+							const text = cursor.index < 0 ? "" : latest.current.prompts[cursor.index] ?? "";
+							cursor.written = text;
+							setDraft(text);
+							// 编辑器处理完这次按键后会重设光标，等它做完再落到末尾。
+							queueMicrotask(() => {
+								if (!editor.isConnected) return;
+								const selection = window.getSelection();
+								if (selection === null) return;
+								const range = document.createRange();
+								range.selectNodeContents(editor);
+								range.collapse(false);
+								selection.removeAllRanges();
+								selection.addRange(range);
+							});
+						};
+
+						/**
+						* 捕获阶段拦方向键：编辑器自己的按键逻辑在后面，先拦才不会抢。
+						* @param event - 键盘事件。
+						*/
+						const onKeyDown = (event) => {
+							if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+							// 组字时方向键归输入法，绝不抢。
+							if (event.isComposing || event.keyCode === 229) return;
+							// 带修饰键的方向键另有语义（选区扩展等）。
+							if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+							const target = event.target;
+							// 外壳给它的 contenteditable 根节点打着 `data-composer-input`。
+							if (!(target instanceof Element)) return;
+							const editor = target.closest("[data-composer-input]");
+							if (editor === null) return;
+
+							const cursor = readCursor();
+							const current = latest.current;
+							// 有选中文本时方向键是在选区里移动，不是翻历史。
+							const selection = window.getSelection();
+							if (selection !== null && !selection.isCollapsed) return;
+							// 草稿非空且不在历史模式：用户在编辑，方向键照常走。
+							if (current.draft !== "" && cursor.index < 0) return;
+
+							if (event.key === "ArrowUp") {
+								if (current.prompts.length === 0) return;
+								// 已经在最旧一条上：让编辑器自己处理，不再吞按键。
+								if (cursor.index === 0) return;
+								cursor.index = cursor.index < 0 ? current.prompts.length - 1 : cursor.index - 1;
+							} else {
+								// 不在历史模式时 ↓ 无意义；已到最新一条则清空并退出。
+								if (cursor.index < 0) return;
+								cursor.index = cursor.index + 1 >= current.prompts.length ? -1 : cursor.index + 1;
+							}
+							event.preventDefault();
+							event.stopPropagation();
+							apply(cursor, editor);
+						};
+						// capture=true：在编辑器自己的 keydown 之前拿到事件。
+						window.addEventListener("keydown", onKeyDown, true);
+						return () => window.removeEventListener("keydown", onKeyDown, true);
+					}, [sessionId, props.inputActions]);
+					return null;
+				};
+			};
+
+			return {
+				id: "prompt-history",
+				inject: ["slots", "locale"],
+				apply(ctx) {
+					registerCopy(ctx, NS, {
+						zh: { hint: "上/下方向键调出历史提问" },
+						en: { hint: "Arrow up/down recalls previous prompts" }
+					});
+					// 挂在输入区底座上：每个会话常驻一份，且拿得到 useChat 与 inputActions。
+					ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+						name: "conversation.input.dock",
+						id: "prompt-history",
+						order: 90
+					}, createBinder(ctx)));
+				}
+			};
+		})();
+
+		/**
 		* 全部功能。加一条就多一个功能；顺序只影响 install 顺序，不影响界面。
 		*/
 		const FEATURES = [
 			featureCloseAllTabs,
-			featureCloseOtherTabs
+			featureCloseOtherTabs,
+			featurePromptHistory
 		];
 
 		// ------------------------------------------------------------------
