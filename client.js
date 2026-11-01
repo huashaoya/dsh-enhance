@@ -216,10 +216,68 @@ window.__ModuleLoader__.load({
 		})();
 
 		/**
+		* 功能二：标签右键菜单「关闭其他」。
+		*
+		* 同一个槽位，紧挨着「全部关闭」。保留的是被右键的那个标签——它由框架在
+		* owner props 的 `tab` 里给出，所以不必自己猜「当前标签」是哪个。
+		*
+		* 之所以不自己从 activeTabId 取：右键浮出面板里的标签时，活动标签可能属于
+		* 另一个窗格，用 `tab.id` 才是「你点的那个」。
+		*/
+		const featureCloseOtherTabs = (() => {
+			const SLOT = "sidebar.right.tab.menu.item";
+			const NS = "enhance.closeOtherTabs";
+
+			/**
+			* @param ctx - 功能上下文（已有 slots / locale / sidebarRight）。
+			* @returns 菜单行组件工厂。
+			*/
+			const createItem = (ctx) => {
+				const t = ctx.locale.bind(NS);
+
+				/**
+				* @param props - 框架给的 tab（哪个标签的菜单）与 dismiss（关菜单）。
+				* @returns 菜单行，或只有一个标签时的 null。
+				*/
+				return function CloseOtherTabs(props) {
+					useLocaleRevision(ctx);
+					const sessionId = props.sessionId ?? onScreenSession(ctx);
+					const keep = props.tab?.id;
+					const tabIds = openTabIds(ctx, sessionId);
+					// 没有别的标签可关时这一行不出现：关掉「其他」等于什么都不做。
+					if (tabIds.length < 2 || keep === void 0) return null;
+					const others = tabIds.filter((tabId) => tabId !== keep);
+					if (others.length === 0) return null;
+					return h(MenuRow, {
+						action: "close-other-tabs",
+						onClick: () => closeMany(props.dismiss, ctx, sessionId, others)
+					}, t("label"));
+				};
+			};
+
+			return {
+				id: "close-other-tabs",
+				inject: ["slots", "locale", "sidebarRight"],
+				apply(ctx) {
+					registerCopy(ctx, NS, {
+						zh: { label: "关闭其他" },
+						en: { label: "Close Others" }
+					});
+					ctx.slots.inject(SLOT, () => ctx.slots.register({
+						name: SLOT,
+						id: "close-other-tabs",
+						order: 20
+					}, createItem(ctx)));
+				}
+			};
+		})();
+
+		/**
 		* 全部功能。加一条就多一个功能；顺序只影响 install 顺序，不影响界面。
 		*/
 		const FEATURES = [
-			featureCloseAllTabs
+			featureCloseAllTabs,
+			featureCloseOtherTabs
 		];
 
 		// ------------------------------------------------------------------
