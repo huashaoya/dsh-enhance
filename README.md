@@ -22,13 +22,7 @@ A single DeepSeek Harness plugin bundle that ships many small UI extensions. One
 
 前提：已装 `dsh`（`npm i -g @deepseek-ai/dsh`）并能跑 `dsh web`。
 
-### 从 npm
-
-```bash
-dsh plugin --profile web add @huashaoya/dsh-enhance
-```
-
-### 从 GitHub
+### 从 GitHub（推荐）
 
 ```bash
 dsh plugin --profile web add github:huashaoya/dsh-enhance
@@ -42,11 +36,24 @@ dsh plugin --profile web add github:huashaoya/dsh-enhance
 dsh plugin --profile web add D:/plugins/dsh-enhance
 ```
 
+> 路径必须是**绝对路径**。装完 profile 里记的是 `link:`，之后删掉那个目录插件就失效。
+
 **装完必须刷新浏览器页面。** 插件的模块图在页面启动时组好，新装一个包等于图里多一条入口，不重载就拿不到。
 
 ### 在图形界面里装
 
 也可以不敲命令：在 DSH 的 **Settings → Plugins** 里安装，效果相同。
+
+### npm（暂未发布）
+
+本包尚未发布到 npm 注册表，`@huashaoya/dsh-enhance` 目前只有一个占位版本，**不要用这条命令**：
+
+```bash
+# 未发布，装了会拿到占位空壳
+# dsh plugin --profile web add @huashaoya/dsh-enhance
+```
+
+发布后会更新本节。
 
 ---
 
@@ -172,13 +179,20 @@ dsh-enhance/
 
 ---
 
-## 发布到 npm
+## 发布到 npm（暂缓）
+
+当前用 GitHub 分发即可，npm 尚未发布。
+
+未来发布时的要点：
 
 ```bash
 npm publish --access public
 ```
 
-注意 `files` 里必须包含 `client.js`、`cordis.patch.yml`、`locale/*.json`、`icon.svg`，否则装完是坏的。用 `npm pack --dry-run` 核对实际打包清单。
+- `files` 里必须包含 `client.js`、`cordis.patch.yml`、`locale/*.json`、`icon.svg`，否则装完是坏的。
+- 发布前用 `npm pack --dry-run` 核对实际打包清单。
+- scoped 包必须带 `publishConfig.access: "public"`，否则默认私有发不出去。
+- npm 现在对带写权限的发布强制 2FA：需要账号开通 2FA 并输入 OTP，或创建勾选 **Bypass 2FA** 的 granular access token。只登录（`npm login`）拿到的会话 token 不足以发布。
 
 ---
 
